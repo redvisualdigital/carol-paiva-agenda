@@ -84,6 +84,7 @@ section{padding:56px 0}
 .info b{display:block;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--nude2);margin-bottom:2px;font-weight:600}
 footer{text-align:center;padding:30px 0 90px;color:var(--mut);font-size:.74rem}
 footer img{width:160px;margin:0 auto 10px}
+.horas .vazio{grid-column:1/-1;margin:0;font-size:.82rem;color:var(--mut);text-align:center;padding:8px 0}
 </style>
 </head>
 <body>
@@ -92,7 +93,7 @@ footer img{width:160px;margin:0 auto 10px}
 <div class="hero"><div class="bg"></div><div class="wrap">
   <div class="eyebrow">Cílios · Sobrancelhas · Laser</div>
   <h1>Seu momento de <i>cuidado</i> começa aqui</h1>
-  <p>Escolha o procedimento, o dia e o horário. O seu pedido chega direto na minha agenda.</p>
+  <p>Escolha o procedimento, o dia e o horário. Você vê os horários livres e já agenda na hora.</p>
   <a class="btn" href="#agendar">Agendar meu horário</a>
 </div></div>
 
@@ -130,14 +131,14 @@ footer img{width:160px;margin:0 auto 10px}
     <div class="chips" id="chips"></div>
     <label class="t">Dia</label>
     <div class="dias" id="dias"></div>
-    <label class="t">Horário de preferência</label>
+    <label class="t">Horários livres</label>
     <div class="horas" id="horas"></div>
     <label class="t">Seu nome</label>
     <input type="text" id="nome" placeholder="Como você se chama?">
     <label class="t">Seu WhatsApp</label>
     <input type="tel" id="tel" inputmode="tel" placeholder="(37) 9 9999-9999">
     <div class="total"><span>Total</span><span id="tot">R$ 0</span></div>
-    <button class="btn" id="conf">Pedir meu horário</button>
+    <button class="btn" id="conf">Agendar meu horário</button>
     <div class="ok" id="ok"></div>
   </div>
   <div class="faixa" style="margin-top:22px"><img src="../carol-paiva/img/olhar1.jpg" alt=""><img src="../carol-paiva/img/olhar2.jpg" alt=""></div>
@@ -155,32 +156,59 @@ var REG={hero:'.hero .wrap',sobre:'.sobre',svcs:'.svcs',faixa:'.faixa',info:'.in
 </script>
 <script src="demo-db.js"></script>
 <script>
-var S=[];document.querySelectorAll('.svcs .it').forEach(function(it){var b=it.querySelector('b'),pr=it.querySelector('.p');if(!b)return;var n=b.textContent.trim(),v=parseFloat(((pr&&pr.textContent)||'').replace(/[^\d,]/g,'').replace(',','.'))||0;if(n)S.push([n,v])});
-var chips=document.getElementById('chips');
-S.forEach(function(s,i){chips.insertAdjacentHTML('beforeend','<input type="radio" name="sv" id="s'+i+'" value="'+i+'"><label for="s'+i+'">'+s[0]+'</label>')});
-function tot(){var t=0;chips.querySelectorAll('input:checked').forEach(function(c){t+=S[c.value][1]});document.getElementById('tot').textContent='R$ '+t}
-chips.addEventListener('change',tot);
-var DS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],dias=document.getElementById('dias'),k=0,d=new Date(),sel=null,hsel=null;
-while(k<6){d.setDate(d.getDate()+1);if(d.getDay()===0)continue;var b=document.createElement('button');b.innerHTML=DS[d.getDay()]+'<b>'+d.getDate()+'</b>';b.dataset.i=k;b.dataset.off=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()))/864e5);b.onclick=function(){dias.querySelectorAll('button').forEach(function(x){x.classList.remove('on')});this.classList.add('on');sel=this;horas()};dias.appendChild(b);k++}
-var H=['08:00','09:00','10:00','11:00','13:00','14:00','15:00','16:00','17:00'];
-function horas(){var h=document.getElementById('horas');h.innerHTML='';hsel=null;H.forEach(function(x){var b=document.createElement('button');b.textContent=x;b.onclick=function(){h.querySelectorAll('button').forEach(function(y){y.classList.remove('on')});this.classList.add('on');hsel=x};h.appendChild(b)})}
-dias.firstChild.click();
-var db=window.firebase?firebase.firestore():null;
+/* agendamento ligado à agenda da Carol: mostra só horário livre e já marca na agenda, com aviso pra ela */
+var DUR_PAD=60, EXP={ini:'08:00',fim:'18:00',passo:30,dias:[1,2,3,4,5,6]};
+function toMin(h){var p=String(h||'0:0').split(':');return (+p[0])*60+(+p[1]||0)}
+function toH(m){return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')}
+function durTxt(t){t=String(t||'');var h=t.match(/(\d+)\s*h\s*(\d+)?/),mi=t.match(/(\d+)\s*min/);if(h)return (+h[1])*60+(+h[2]||0);if(mi)return +mi[1];return 0}
+var S=[];document.querySelectorAll('.svcs .it').forEach(function(it){var b=it.querySelector('b'),pr=it.querySelector('.p'),sm=it.querySelector('small');if(!b)return;var n=b.textContent.trim(),v=parseFloat(((pr&&pr.textContent)||'').replace(/[^\d,]/g,'').replace(',','.'))||0;if(n)S.push({nome:n,preco:v,dur:durTxt(sm&&sm.textContent)})});
+var chips=document.getElementById('chips'),db=window.firebase?firebase.firestore():null,CFG={},AGS=[];
+S.forEach(function(s,i){chips.insertAdjacentHTML('beforeend','<input type="radio" name="sv" id="s'+i+'" value="'+i+'"><label for="s'+i+'">'+s.nome+'</label>')});
+function svAtual(){var c=chips.querySelector('input:checked');return c?S[c.value]:null}
+function svAgenda(nome){return (CFG.servicos||[]).find(function(x){return String(x.nome).toLowerCase()===String(nome).toLowerCase()})}
+function durDe(s){if(!s)return DUR_PAD;var a=svAgenda(s.nome);return (a&&a.duracao)||s.dur||DUR_PAD}
+function tot(){var s=svAtual();document.getElementById('tot').textContent='R$ '+(s?s.preco:0)}
+async function carrega(){if(!db)return;try{var g=await db.doc('config/geral').get();CFG=g.exists?g.data():{};var q=await db.collection('agendamentos').get();AGS=q.docs.map(function(d){return d.data()})}catch(e){console.error(e)}
+  var ex=CFG.expediente||{};EXP={ini:ex.ini||EXP.ini,fim:ex.fim||EXP.fim,passo:ex.passo||EXP.passo,dias:ex.dias||EXP.dias}}
+function ocupado(data,ini,fim){
+  var a=AGS.some(function(x){if(x.data!==data||x.status==='cancelado'||x.status==='faltou')return false;var i=toMin(x.hora),f=i+(Number(x.duracao)||DUR_PAD);return ini<f&&fim>i});
+  var b=(CFG.bloqueios||[]).some(function(x){if(x.data!==data)return false;var i=x.diaTodo?0:toMin(x.de),f=x.diaTodo?1440:toMin(x.ate);return ini<f&&fim>i});
+  return a||b}
 function ymd(dt){return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')}
+var DS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],dias=document.getElementById('dias'),sel=null,hsel=null;
+function montaDias(){dias.innerHTML='';var d=new Date(),k=0,n=0;while(k<6&&n<30){d.setDate(d.getDate()+1);n++;if(EXP.dias.indexOf(d.getDay())<0)continue;var b=document.createElement('button');b.innerHTML=DS[d.getDay()]+'<b>'+d.getDate()+'</b>';b.dataset.data=ymd(d);b.onclick=function(){dias.querySelectorAll('button').forEach(function(x){x.classList.remove('on')});this.classList.add('on');sel=this;horas()};dias.appendChild(b);k++}}
+function livres(data){var dur=durDe(svAtual()),out=[];for(var t=toMin(EXP.ini);t+dur<=toMin(EXP.fim);t+=EXP.passo){if(!ocupado(data,t,t+dur))out.push(toH(t))}return out}
+function horas(){var h=document.getElementById('horas');h.innerHTML='';hsel=null;if(!sel)return;
+  if(!svAtual()){h.innerHTML='<p class="vazio">Escolha o procedimento pra ver os horários livres.</p>';return}
+  var L=livres(sel.dataset.data);if(!L.length){h.innerHTML='<p class="vazio">Esse dia está cheio. Escolha outro dia.</p>';return}
+  L.forEach(function(x){var b=document.createElement('button');b.textContent=x;b.onclick=function(){h.querySelectorAll('button').forEach(function(y){y.classList.remove('on')});this.classList.add('on');hsel=x};h.appendChild(b)})}
+chips.addEventListener('change',function(){tot();horas()});
+var dig=function(t){return String(t||'').replace(/\D/g,'').slice(-8)};
 document.getElementById('conf').onclick=async function(){
-  var o=document.getElementById('ok'),c=chips.querySelector('input:checked'),sv=c?S[c.value][0]:'';
+  var o=document.getElementById('ok'),s=svAtual(),btn=this;
   var nome=document.getElementById('nome').value.trim(),tel=document.getElementById('tel').value.trim(),falta=[];
-  if(!sv)falta.push('o procedimento');if(!hsel)falta.push('o horário');if(!nome)falta.push('o seu nome');if(tel.replace(/\D/g,'').length<10)falta.push('o seu WhatsApp com DDD');
+  if(!s)falta.push('o procedimento');if(!hsel)falta.push('o horário');if(!nome)falta.push('o seu nome');if(tel.replace(/\D/g,'').length<10)falta.push('o seu WhatsApp com DDD');
   if(falta.length){o.style.display='block';o.textContent='Falta '+falta.join(', ')+'.';return}
-  var dt=new Date();dt.setDate(dt.getDate()+(+sel.dataset.off));var dia=sel.textContent.replace(/(\D+)(\d+)/,'$1 $2');
-  var agora=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16).replace('T',' ');
-  try{if(db)await db.collection('pedidos').doc().set({nome:nome,telefone:tel,tecnica:sv,tipo:'primeira aplicação',dia:ymd(dt),hora:hsel,periodo:'às '+hsel,obs:'',criadoEm:agora})}catch(e){console.error(e)}
-  var msg='Oi, Carol! Sou a '+nome+' e acabei de pedir um horário pelo seu site.\nQueria '+sv+', '+dia+', às '+hsel+'.';
+  btn.disabled=true;
+  await carrega();var data=sel.dataset.data,dur=durDe(s),ini=toMin(hsel);
+  if(ocupado(data,ini,ini+dur)){btn.disabled=false;o.style.display='block';o.textContent='Esse horário acabou de ser ocupado. Escolha outro, por favor.';horas();return}
+  var dia=sel.textContent.replace(/(\D+)(\d+)/,'$1 $2'),agora=new Date().toISOString();
+  try{if(db){
+    var cq=await db.collection('clientes').get(),cli=cq.docs.find(function(d){return dig(d.data().telefone)===dig(tel)}),cid;
+    if(cli)cid=cli.id;else{var r=db.collection('clientes').doc();cid=r.id;await r.set({nome:nome,telefone:tel,obs:'',criadoEm:agora.slice(0,10)})}
+    var a=svAgenda(s.nome),sid=a?a.id:'',preco=a&&a.preco!=null?a.preco:s.preco;
+    var ag=db.collection('agendamentos').doc();
+    await ag.set({clienteId:cid,profId:(CFG.profissionais&&CFG.profissionais[0]&&CFG.profissionais[0].id)||'carol',divisao:[],servicos:[{id:sid,nome:s.nome,preco:preco,duracao:dur}],servicoId:sid,servicoNome:s.nome,domicilio:null,data:data,hora:hsel,valor:preco,duracao:dur,obs:'Agendado pelo site',status:'agendado',origem:'site',criadoEm:agora});
+    await db.collection('avisos').doc().set({tipo:'agendou',nome:nome,telefone:tel,servico:s.nome,data:data,hora:hsel,agId:ag.id,criadoEm:agora});
+  }}catch(e){console.error(e);btn.disabled=false;o.style.display='block';o.textContent='Não deu pra marcar agora. Tente de novo ou chame a Carol no WhatsApp.';return}
+  btn.disabled=false;
+  var msg='Oi, Carol! Sou a '+nome+' e acabei de agendar pelo seu site: '+s.nome+', '+dia+', às '+hsel+'.';
   o.style.display='block';
-  o.innerHTML='Obrigada, '+nome.split(' ')[0]+'! A Carol recebeu o seu pedido de '+sv+' pra '+dia+', às '+hsel+', e vai te chamar no WhatsApp pra confirmar. 🤍'+
-    '<br><a class="btn" style="margin-top:12px" href="https://wa.me/5537998361528?text='+encodeURIComponent(msg)+'">Adiantar pelo WhatsApp</a>'+
-    '';
+  o.innerHTML='Prontinho, '+nome.split(' ')[0]+'! O seu horário de '+s.nome+' está marcado pra '+dia+', às '+hsel+'. A Carol já recebeu e vai te mandar a confirmação no WhatsApp. 🤍'+
+    '<br><a class="btn" style="margin-top:12px" href="https://wa.me/5537998361528?text='+encodeURIComponent(msg)+'">Falar com a Carol no WhatsApp</a>';
+  await carrega();horas();
 };
+(async function(){await carrega();montaDias();if(dias.firstChild)dias.firstChild.click()})();
 </script>
 <!-- ===== modo edição (só na área da Carol) ===== -->
 <style>
@@ -202,6 +230,7 @@ header{top:58px}
 .edwrap{position:relative;display:block}
 .edtoast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1E1A17;color:#fff;border-radius:999px;padding:11px 18px;font-size:.8rem;z-index:60;display:none}
 @media (max-width:420px){.edbar .tx{display:none}}
+.horas .vazio{grid-column:1/-1;margin:0;font-size:.82rem;color:var(--mut);text-align:center;padding:8px 0}
 </style>
 <div class="edbar ed-ui">
   <a href="./">‹ Agenda</a>

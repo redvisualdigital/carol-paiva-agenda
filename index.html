@@ -151,6 +151,8 @@ body.tem-reserva .wrap{padding-bottom:360px}
 [hidden]{display:none!important}
 /* logo da Carol Paiva no topo e faixa de demonstração */
 .logoimg{height:58px;width:auto;display:block;margin:0}
+.avbox{border-color:var(--accent)!important}
+.avbox summary{color:var(--accent)}
 .vsite{display:block;margin-top:4px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);text-decoration:none}
 .demo{display:flex;align-items:baseline;gap:8px;border-bottom:1px dashed #B9B0A6;padding:0 2px 8px;font-size:12px;color:var(--muted);margin-bottom:12px}
 .demo b{color:var(--ink);font-weight:600;letter-spacing:.12em;text-transform:uppercase;font-size:11px}
@@ -297,7 +299,7 @@ const S = {
   prof: "todas",
   mes: today().slice(0,7),
   busca: "",
-  cfg: null, clientes: [], ags: [], caixa: [], acomp: [], reservas: [], pedidos: [],
+  cfg: null, clientes: [], ags: [], caixa: [], acomp: [], reservas: [], pedidos: [], avisos: [],
   pronto: {cfg:false, clientes:false, ags:false, caixa:false, acomp:false},
   db: null, canWrite: true
 };
@@ -489,6 +491,15 @@ const dtAg = a => { const d = parseYmd(a.data); const [h,m] = String(a.hora||"0:
 const primeiroNome = c => String(c?.nome||"").split(" ")[0];
 /* pedidos feitos pela cliente no site: ficam no topo até virar horário marcado (ou serem apagados) */
 const svcPorNome = n => cfg().servicos.find(s => String(s.nome||"").toLowerCase() === String(n||"").toLowerCase());
+/* avisos: a cliente agendou sozinha pelo site e o horário já entrou na agenda */
+function painelAvisos(){
+  const ls = S.avisos || []; if (!ls.length) return "";
+  return '<details class="msgbox pedbox avbox" open><summary><span class="cnt">'+ls.length+'</span>🔔 Agendado pelo site</summary>'+
+    ls.slice().reverse().map(a => { const nm = String(a.nome||"Cliente"); const resp = "Oi, "+nm.split(" ")[0]+"! Recebi o seu agendamento de "+a.servico+" pra "+fmtDia(a.data)+", às "+a.hora+". Te espero! 💕";
+      return '<div class="it"><div class="row"><b class="grow">'+esc(nm)+' agendou '+esc(a.servico)+'</b></div>'+
+        '<div class="tag">'+esc(fmtDia(a.data))+', às '+esc(a.hora)+'</div>'+
+        '<div class="row"><button class="btn-sm btn-primary" data-avver="'+esc(a.id)+'">Ver na agenda</button>'+waBtn(a.telefone, resp, "Confirmar no WhatsApp", "btn-sm")+'<button class="btn-sm btn-ghost" data-avok="'+esc(a.id)+'">Ok, vi</button></div></div>'; }).join("")+'</details>';
+}
 function painelPedidos(){
   const ls = S.pedidos || []; if (!ls.length) return "";
   return '<details class="msgbox pedbox" open><summary><span class="cnt">'+ls.length+'</span>Pedidos do site</summary><p class="note" style="margin:0">Clientes que pediram horário pelo seu site. Toque em “Marcar horário” pra pôr na agenda.</p>'+
@@ -542,6 +553,7 @@ function viewAgenda(v){
   const doDia = S.ags.filter(a => a.data === S.dia && doProf(a)).sort((a,b)=> a.hora.localeCompare(b.hora));
   const [y,mm] = S.dia.slice(0,7).split("-").map(Number);
   let html = '<div class="datebar"><button class="btn-sm" data-cm="-1" aria-label="Mês anterior">‹</button><div class="label">'+MES[mm-1]+' '+y+'</div><button class="btn-sm" data-cm="1" aria-label="Próximo mês">›</button></div>';
+  html += painelAvisos();
   html += painelPedidos();
   html += painelConfirmar();
   html += '<div class="busca-ag"><input id="buscaAg" type="search" autocomplete="off" placeholder="🔍 Buscar cliente por nome ou número"><div id="buscaAgRes" class="achou" style="margin-top:6px"></div></div>';
@@ -577,6 +589,8 @@ function viewAgenda(v){
   bindConfWa(v);
   const det = v.querySelector("details.msgbox:not(.pedbox)"); if (det) det.ontoggle = () => { S.confAberto = det.open; };
   v.querySelectorAll("[data-pmarca]").forEach(b => b.onclick = () => marcarPedido(b.dataset.pmarca));
+  v.querySelectorAll("[data-avver]").forEach(b => b.onclick = () => { const a = (S.avisos||[]).find(x => x.id === b.dataset.avver); if (a){ S.dia = a.data; render(); setTimeout(() => { const el = document.querySelector(".appt"); if (el) el.scrollIntoView({behavior:"smooth", block:"center"}); }, 80); } });
+  v.querySelectorAll("[data-avok]").forEach(b => b.onclick = () => run(()=>col("avisos").doc(b.dataset.avok).delete()));
   v.querySelectorAll("[data-pdel]").forEach(b => b.onclick = () => confirmar("Apagar este pedido do site?", "Apagar", () => run(()=>col("pedidos").doc(b.dataset.pdel).delete(), "Pedido apagado")));
 }
 /* ao tocar no botão do WhatsApp de confirmação, guarda a hora do envio (o app não sabe se ela mandou mesmo, só que abriu a conversa) */
@@ -1091,7 +1105,7 @@ function formSvc(s){
 
 /* ---------- conexão com o banco (Firebase: login por e-mail e senha + Firestore) ---------- */
 const FIREBASE_CONFIG = {}; /* demonstração: o banco é o demo-db.js, no próprio aparelho */
-const COLECOES = ["clientes","agendamentos","caixa","acompanhamentos","reservas","pedidos"];
+const COLECOES = ["clientes","agendamentos","caixa","acompanhamentos","reservas","pedidos","avisos"];
 function telaLogin(mostrar, msg){
   const el = $("#login"); el.hidden = !mostrar;
   document.body.classList.toggle("sem-login", mostrar);
@@ -1159,6 +1173,10 @@ render();
     unsub.push(db.collection("agendamentos").orderBy("data","desc").limit(1000).onSnapshot(q => { S.ags = q.docs.map(d => ({id:d.id, ...d.data()})); render(); }, fail));
     unsub.push(db.collection("caixa").orderBy("data","desc").limit(1000).onSnapshot(q => { S.caixa = q.docs.map(d => ({id:d.id, ...d.data(), valor: Number(d.data().valor)||0})); S.pronto.caixa = true; render(); }, fail));
     unsub.push(db.collection("acompanhamentos").where("feito","==",false).onSnapshot(q => { S.acomp = q.docs.map(d => ({id:d.id, ...d.data()})); render(); }, fail));
+    let avIni = true;
+    unsub.push(db.collection("avisos").onSnapshot(q => { const ls = q.docs.map(d => ({id:d.id, ...d.data()})).sort((x,y)=>String(x.criadoEm).localeCompare(String(y.criadoEm)));
+      if (!avIni){ const novos = ls.filter(a => !(S.avisos||[]).some(b => b.id === a.id)); if (novos.length) toast("🔔 "+novos[novos.length-1].nome.split(" ")[0]+" agendou "+novos[novos.length-1].servico+" pra "+fmtCurto(novos[novos.length-1].data)+" às "+novos[novos.length-1].hora); }
+      avIni = false; S.avisos = ls; render(); }, fail));
     unsub.push(db.collection("pedidos").onSnapshot(q => { S.pedidos = q.docs.map(d => ({id:d.id, ...d.data()})).sort((x,y)=>String(x.criadoEm).localeCompare(String(y.criadoEm))); render(); }, fail));
     unsub.push(db.collection("reservas").orderBy("data","desc").limit(1000).onSnapshot(q => { S.reservas = q.docs.map(d => ({id:d.id, ...d.data()})); S.pronto.reservas = true; render(); }, fail));
   });

@@ -2,7 +2,7 @@
    Na primeira abertura entra com os serviços de exemplo e alguns horários de exemplo.
    Na versão oficial, este arquivo sai e entra o Firebase (login + banco na nuvem), igual ao da Essence Glam. */
 (function(){
-  const KEY = "carolpaiva.demo.v2";
+  const KEY = "carolpaiva.demo.v3";
   const pad = n => String(n).padStart(2, "0");
   const ymd = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
   const dia = n => { const d = new Date(); d.setDate(d.getDate()+n); return ymd(d); };
@@ -55,17 +55,19 @@
       agendamentos: ags,
       caixa: cx,
       acompanhamentos: {r1: ret("c7","Manutenção de cílios",-1), r2: ret("c8","Manutenção de cílios",0), r3: ret("c1","Design de sobrancelhas",2)},
-      reservas: res, pedidos: {p1: {nome: "Mariana Souza", telefone: "(37) 99800-0010", tecnica: "Volume brasileiro", tipo: "primeira aplicação", dia: dia(3), hora: "09:00", periodo: "às 09:00", obs: "", criadoEm: dia(0)+" 07:52"}}
+      reservas: res, pedidos: {}, avisos: {}
     };
   }
   let store;
   try { store = JSON.parse(localStorage.getItem(KEY)); } catch(e){}
   if (!store || !store.config) store = seed();
-  ["config","clientes","agendamentos","caixa","acompanhamentos","reservas","pedidos"].forEach(c => store[c] = store[c] || {});
+  ["config","clientes","agendamentos","caixa","acompanhamentos","reservas","pedidos","avisos"].forEach(c => store[c] = store[c] || {});
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch(e){} };
   save();
 
   const subs = []; let n = 0;
+  /* outra aba (o site) gravou: recarrega e avisa a tela na hora */
+  addEventListener("storage", e => { if (e.key !== KEY || !e.newValue) return; try { store = JSON.parse(e.newValue); ["config","clientes","agendamentos","caixa","acompanhamentos","reservas","pedidos","avisos"].forEach(c => store[c] = store[c] || {}); subs.forEach(f => f()); } catch(x){} });
   const notify = () => { save(); setTimeout(() => subs.forEach(f => f()), 0); };
   const clone = d => JSON.parse(JSON.stringify(d === undefined ? null : d));
   const novoId = () => Date.now().toString(36) + (++n).toString(36) + Math.random().toString(36).slice(2, 6);
