@@ -938,22 +938,40 @@ function formCliente(c){
   });
 }
 /* ---------- anamnese ---------- */
-const ANAM = [
-  ["nascimento","Data de nascimento","data"],
-  ["alergias","Tem alergia? (cola, cosméticos, henna, esmalte, látex, medicamentos) Quais?","texto"],
-  ["gestante","Está grávida ou amamentando?","simnao"],
-  ["medicamentos","Usa algum medicamento ou faz tratamento? (ex.: Roacutan, anticoagulante, quimioterapia, hormônios)","texto"],
-  ["olhos","Tem algum problema nos olhos? (conjuntivite, blefarite, olho seco, glaucoma, cirurgia recente)","texto"],
-  ["lentes","Usa lente de contato?","simnao"],
-  ["pele","Tem algum problema de pele no rosto? (dermatite, psoríase, acne, queloide, rosácea)","texto"],
-  ["acidos","Usa ácidos ou retinoides no rosto?","simnao"],
-  ["antes","Já fez esse procedimento antes? Teve alguma reação?","texto"],
-  ["dorme","Dorme de lado ou de bruços? Qual lado?","texto"],
-  ["obs","Outras observações","texto"]
-];
-const ALERTA_ANAM = ["alergias","medicamentos","olhos","pele"];
+/* perguntas por tipo de profissional (cliente.js → anamnese: "cilios" ou "brow") */
+const ANAM_SETS = {
+  cilios: { alerta: ["alergias","medicamentos","olhos","pele"], perguntas: [
+    ["nascimento","Data de nascimento","data"],
+    ["alergias","Tem alergia? (cola, cosméticos, henna, esmalte, látex, medicamentos) Quais?","texto"],
+    ["gestante","Está grávida ou amamentando?","simnao"],
+    ["medicamentos","Usa algum medicamento ou faz tratamento? (ex.: Roacutan, anticoagulante, quimioterapia, hormônios)","texto"],
+    ["olhos","Tem algum problema nos olhos? (conjuntivite, blefarite, olho seco, glaucoma, cirurgia recente)","texto"],
+    ["lentes","Usa lente de contato?","simnao"],
+    ["pele","Tem algum problema de pele no rosto? (dermatite, psoríase, acne, queloide, rosácea)","texto"],
+    ["acidos","Usa ácidos ou retinoides no rosto?","simnao"],
+    ["antes","Já fez esse procedimento antes? Teve alguma reação?","texto"],
+    ["dorme","Dorme de lado ou de bruços? Qual lado?","texto"],
+    ["obs","Outras observações","texto"] ] },
+  brow: { alerta: ["alergias","gestante","medicamentos","acidos","pele","reacao","sensivel"], perguntas: [
+    ["nascimento","Data de nascimento","data"],
+    ["alergias","Tem alergia? (henna, tintura de cabelo, cosméticos, produtos químicos, esmalte) Quais?","texto"],
+    ["gestante","Está grávida ou amamentando?","simnao"],
+    ["medicamentos","Usa algum medicamento ou faz tratamento? (ex.: Roacutan/isotretinoína, antibiótico, corticoide, quimioterapia)","texto"],
+    ["acidos","Usa ácidos, retinoides ou fez peeling no rosto recentemente? Quando?","texto"],
+    ["pele","Tem algum problema de pele na região das sobrancelhas? (dermatite, psoríase, seborreia, feridas, acne)","texto"],
+    ["sensivel","Sua pele é sensível? (fica vermelha ou arde com facilidade)","simnao"],
+    ["micro","Já fez micropigmentação, microblading ou tatuagem nas sobrancelhas? Quando?","texto"],
+    ["antes","Já fez Brow Lamination, henna ou coloração nas sobrancelhas?","texto"],
+    ["reacao","Teve alguma reação nesses procedimentos? (coceira, vermelhidão, ardência, queda dos fios)","texto"],
+    ["depilacao","Tirou os pelos da região (cera, linha ou pinça) nos últimos dias?","simnao"],
+    ["sol","Toma sol, vai à piscina ou sauna com frequência?","simnao"],
+    ["obs","Outras observações","texto"] ] }
+};
+const ANAM_SET = ANAM_SETS[(window.CLIENTE||{}).anamnese] || ANAM_SETS.cilios;
+const ANAM = ANAM_SET.perguntas;
+const ALERTA_ANAM = ANAM_SET.alerta;
 function resumoAnamnese(c){ const a = c.anamnese; if (!a) return '<p class="note">Ainda não preenchida.</p>';
-  const atn = ALERTA_ANAM.filter(k => a[k] && !/^(n[aã]o|nada|nenhum[a]?|-)$/i.test(String(a[k]).trim()));
+  const atn = ALERTA_ANAM.filter(k => a[k] && !/^(n[aã]o|nada|nenhum[a]?|-|—)$/i.test(String(a[k]).trim()));
   const linhas = ANAM.filter(([k]) => a[k] != null && String(a[k]).trim() !== "").map(([k,l]) => '<div class="line"><div class="grow"><small>'+esc(l.replace(/\?.*$/,"?"))+'</small><b style="font-weight:500">'+esc(k==="nascimento"?fmtCurto(a[k])+"/"+a[k].slice(0,4):String(a[k]))+'</b></div></div>').join("");
   return (atn.length ? '<div class="banner" style="margin-bottom:8px">⚠️ Atenção: '+esc(atn.map(k => ANAM.find(x=>x[0]===k)[1].split("?")[0]).join(" · "))+'</div>' : '')+'<div class="card" style="padding:4px 12px">'+linhas+'</div><p class="note">Preenchida em '+esc(fmtCurto(a.preenchidoEm||""))+'.</p>'; }
 function formAnamnese(id){ const c = cliById(id); if (!c) return; const a = c.anamnese || {};
@@ -1087,7 +1105,7 @@ const SEC_PADRAO = {
   retorno:'Oii {nome}, seu último {servico} foi dia {data_atendimento} e, {manter}, o ideal é que você retorne {janela}. Vou te enviar o link pra você ver quais horários tenho disponíveis pra te atender: {link} 💗',
   cuidados:'Oi, {nome}! Foi um prazer te atender. 💗 Seguem os cuidados com seu {servico}: {cuidados}. Qualquer dúvida, é só me chamar.',
   conflito:'Oii {nome}, que pena! O horário de {hora} do {quando} acabou de ser reservado por outra cliente. 😕 Escolhe outro horário aqui, por favor: {link} 💗'};
-const VERSAO_APP = "24/11 · 19h"; /* aparece em Ajustes pra saber se o celular já pegou a versão nova */
+const VERSAO_APP = "25/11 · 9h"; /* aparece em Ajustes pra saber se o celular já pegou a versão nova */
 function secStatus(){ const u = S.sec?.ultimaRodada; if (!u) return '<span class="secst"><i style="background:var(--muted)"></i>Ainda sem notícia da secretária</span>';
   const min = Math.round((Date.now() - new Date(u).getTime())/60000); const hh = new Date(u).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
   return min <= 12 ? '<span class="secst" style="color:var(--ok)"><i style="background:var(--ok)"></i>Funcionando · conferiu a agenda às '+hh+'</span>' : '<span class="secst" style="color:var(--bad)"><i style="background:var(--bad)"></i>Parada desde '+esc(fmtCurto(new Date(u).toISOString().slice(0,10)))+' às '+hh+' · avise o Claude</span>'; }
