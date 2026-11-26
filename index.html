@@ -850,11 +850,12 @@ function textoAviso(a){ const n = String(a.nome||"Cliente").split(" ")[0]; const
   if (a.tipo === "agendou") return "🔔 "+n+" agendou "+sv+" pelo site, "+q;
   if (a.tipo === "cancelou") return "↩️ "+n+" desmarcou "+sv+" ("+q+") pelo WhatsApp. O horário foi liberado";
   if (a.tipo === "conflito") return "⚠️ "+n+" tentou agendar "+sv+" "+q+", mas o horário já estava ocupado";
+  if (a.tipo === "respondeu") return "💬 "+n+" respondeu o lembrete de "+sv+" ("+q+")"+(a.resposta ? ": “"+a.resposta+"”" : "")+", mas não disse sim nem não";
   return "🔔 "+n; }
 function painelAvisos(){ const ls = S.avisos || []; if (!ls.length) return "";
   return '<div class="avbox"><div class="row"><b class="grow">Avisos</b>'+(ls.length>1?'<button class="btn-sm btn-ghost" data-avtodos>Limpar todos</button>':'')+'</div>'+
-    ls.slice(0,8).map(a => '<div class="avit"><div class="grow">'+esc(textoAviso(a))+(a.tipo==="conflito"?'<small>Chame ela pra escolher outro horário.</small>':'')+'</div>'+
-      (a.agId && a.tipo !== "cancelou" ? '<button class="btn-sm" data-avver="'+esc(a.id)+'">Ver</button>' : '')+(a.tipo === "conflito" && a.telefone ? waBtn(a.telefone, "Oii "+String(a.nome||"").split(" ")[0]+", o horário que você escolheu acabou de ser reservado. Qual outro dia e horário ficam bons pra você? 💗", "Chamar", "btn-sm") : '')+'<button class="btn-sm btn-ghost" data-avok="'+esc(a.id)+'" aria-label="Apagar aviso">Ok</button></div>').join("")+'</div>'; }
+    ls.slice(0,8).map(a => '<div class="avit"><div class="grow">'+esc(textoAviso(a))+(a.tipo==="conflito"?'<small>Chame ela pra escolher outro horário.</small>':'')+(a.tipo==="respondeu"?'<small>Confira a conversa. Se ela responder sim ou não, a secretária confirma ou libera sozinha.</small>':'')+'</div>'+
+      (a.agId && a.tipo !== "cancelou" ? '<button class="btn-sm" data-avver="'+esc(a.id)+'">Ver</button>' : '')+(a.tipo === "respondeu" && a.telefone ? waBtn(a.telefone, "", "Conversa", "btn-sm") : '')+(a.tipo === "conflito" && a.telefone ? waBtn(a.telefone, "Oii "+String(a.nome||"").split(" ")[0]+", o horário que você escolheu acabou de ser reservado. Qual outro dia e horário ficam bons pra você? 💗", "Chamar", "btn-sm") : '')+'<button class="btn-sm btn-ghost" data-avok="'+esc(a.id)+'" aria-label="Apagar aviso">Ok</button></div>').join("")+'</div>'; }
 function bindAvisos(v){
   v.querySelectorAll("[data-avok]").forEach(b => b.onclick = () => run(()=>col("avisos").doc(b.dataset.avok).delete()));
   v.querySelectorAll("[data-avver]").forEach(b => b.onclick = () => { const a = S.avisos.find(x => x.id === b.dataset.avver); if (!a) return; S.tab = "agenda"; S.dia = a.data; S.mes = a.data.slice(0,7); document.querySelectorAll("nav.tabs button").forEach(t => t.setAttribute("aria-current", t.dataset.tab === "agenda" ? "page" : "false")); render(); run(()=>col("avisos").doc(a.id).delete()); });
@@ -1105,7 +1106,7 @@ const SEC_PADRAO = {
   retorno:'Oii {nome}, seu último {servico} foi dia {data_atendimento} e, {manter}, o ideal é que você retorne {janela}. Vou te enviar o link pra você ver quais horários tenho disponíveis pra te atender: {link} 💗',
   cuidados:'Oi, {nome}! Foi um prazer te atender. 💗 Seguem os cuidados com seu {servico}: {cuidados}. Qualquer dúvida, é só me chamar.',
   conflito:'Oii {nome}, que pena! O horário de {hora} do {quando} acabou de ser reservado por outra cliente. 😕 Escolhe outro horário aqui, por favor: {link} 💗'};
-const VERSAO_APP = "25/11 · 9h"; /* aparece em Ajustes pra saber se o celular já pegou a versão nova */
+const VERSAO_APP = "25/11 · 21h"; /* aparece em Ajustes pra saber se o celular já pegou a versão nova */
 function secStatus(){ const u = S.sec?.ultimaRodada; if (!u) return '<span class="secst"><i style="background:var(--muted)"></i>Ainda sem notícia da secretária</span>';
   const min = Math.round((Date.now() - new Date(u).getTime())/60000); const hh = new Date(u).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
   return min <= 12 ? '<span class="secst" style="color:var(--ok)"><i style="background:var(--ok)"></i>Funcionando · conferiu a agenda às '+hh+'</span>' : '<span class="secst" style="color:var(--bad)"><i style="background:var(--bad)"></i>Parada desde '+esc(fmtCurto(new Date(u).toISOString().slice(0,10)))+' às '+hh+' · avise o Claude</span>'; }
