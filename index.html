@@ -104,6 +104,7 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 .st-concluido{background:var(--ok-soft);color:var(--ok)}
 .st-faltou{background:var(--warn-soft);color:var(--warn)}
 .st-cancelado{background:var(--bad-soft);color:var(--bad)}
+.rev-it{display:flex;gap:12px;align-items:center;padding:11px 4px;border-bottom:1px solid var(--line);cursor:pointer}.rev-it input{width:22px;height:22px;flex:none;accent-color:var(--accent)}.rev-it small{display:block;color:var(--muted)}.rev-grp{margin:14px 0 4px;font-weight:600}.rev-foot{position:sticky;bottom:-18px;background:var(--surface);padding:12px 0 4px;border-top:1px solid var(--line)}
 .empty{border:1px dashed var(--line);border-radius:var(--r);padding:22px 16px;text-align:center;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
@@ -912,14 +913,43 @@ function marcarEnvioProx(id, enviadas){ return run(()=>col("acompanhamentos").do
 function viewClientes(v){
   const q = S.busca.trim().toLowerCase();
   const lista = q ? achaClientes(q, 9999) : S.clientes.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
-  let html = '<div class="row search"><input class="grow" id="busca" type="search" placeholder="Buscar por nome ou telefone" value="'+esc(S.busca)+'"><button class="btn-primary" id="novaC">+ Cliente</button></div>';
+  let html = (S.revisao && S.revisao.length ? '<div class="banner" style="display:flex;gap:10px;align-items:center"><span class="grow">📱 <b>'+S.revisao.length+' contatos do seu iPhone</b> pra revisar. Marque quem é cliente e eles entram aqui.</span><button class="btn-primary" id="revAbre">Revisar</button></div>' : '') + '<div class="row search"><input class="grow" id="busca" type="search" placeholder="Buscar por nome ou telefone" value="'+esc(S.busca)+'"><button class="btn-primary" id="novaC">+ Cliente</button></div>';
   if (!S.clientes.length) html += '<div class="empty"><b>Nenhuma cliente cadastrada</b>Cadastre aqui ou direto ao marcar um horário na Agenda.</div>';
   else if (!lista.length) html += '<div class="empty"><b>Ninguém encontrado</b>Confira o nome ou cadastre uma cliente nova.</div>';
   else html += '<div class="list">'+lista.map(c => { const ags = S.ags.filter(a=>a.clienteId===c.id && a.status==="concluido").sort((a,b)=>b.data.localeCompare(a.data)); return '<button class="client" data-cli="'+esc(c.id)+'"><span class="av">'+esc(iniciais(c.nome))+'</span><span class="grow"><b>'+esc(c.nome)+'</b><br><span class="tag">'+(ags[0]? "Último atendimento "+fmtCurto(ags[0].data)+" · "+esc(ags[0].servicoNome||"") : "Ainda sem atendimento")+'</span></span><span class="tag">'+ags.length+'×</span></button>'; }).join("")+'</div>';
   v.innerHTML = html;
   const b = v.querySelector("#busca"); b.oninput = () => { S.busca = b.value; const pos = b.selectionStart; render(); const nb = $("#busca"); nb.focus(); nb.setSelectionRange(pos,pos); };
   v.querySelector("#novaC").onclick = () => formCliente();
+  const ra = v.querySelector("#revAbre"); if (ra) ra.onclick = revisarContatos;
   v.querySelectorAll("[data-cli]").forEach(x => x.onclick = () => fichaCliente(x.dataset.cli));
+}
+/* contatos do iPhone: a Carol marca quem é cliente (lista em revisao/contatos, só a equipe lê) */
+function revisarContatos(){
+  const L = (S.revisao || []).slice().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")), marc = new Set();
+  const item = c => '<label class="rev-it" data-i="'+c.i+'" data-k="'+esc(semAcento(c.nome)+" "+digits(c.telefone))+'"><input type="checkbox" value="'+c.i+'"><span class="grow"><b>'+esc(c.nome)+'</b><small>'+esc(c.telefone.replace(/^\+55(\d\d)(\d+)(\d{4})$/,"($1) $2-$3"))+(c.org?' · '+esc(c.org):'')+'</small></span></label>';
+  const tal = L.filter(c=>c.grupo!=="nao"), nao = L.filter(c=>c.grupo==="nao");
+  modal('<h3>Contatos do iPhone</h3><p class="note" style="margin-top:0">Marque só quem é <b>cliente</b>. Quem ficar sem marcar não entra na agenda. Dá pra fazer aos poucos: o que você não marcou continua aqui.</p>'+
+    '<input id="revBusca" type="search" placeholder="Buscar nome ou número" style="width:100%">'+
+    '<div class="rev-grp">Podem ser clientes ('+tal.length+')</div>'+tal.map(item).join("")+
+    '<details><summary class="rev-grp" style="cursor:pointer">Parecem não ser clientes: banco, família, serviços ('+nao.length+')</summary>'+nao.map(item).join("")+'</details>'+
+    '<div class="rev-foot foot"><button type="button" id="revFim" class="btn-danger">O resto não é cliente</button><button type="button" id="revX">Fechar</button><button type="button" class="btn-primary" id="revOk" disabled>Colocar 0 na agenda</button></div>', m => {
+    const ok = m.querySelector("#revOk"), up = () => { ok.disabled = !marc.size; ok.textContent = "Colocar "+marc.size+" na agenda"; };
+    m.querySelectorAll('input[type=checkbox]').forEach(x => x.onchange = () => { x.checked ? marc.add(Number(x.value)) : marc.delete(Number(x.value)); up(); });
+    const bu = m.querySelector("#revBusca"); bu.oninput = () => { const q = semAcento(bu.value.trim()), d = digits(bu.value); m.querySelectorAll(".rev-it").forEach(e => { e.style.display = !q || e.dataset.k.includes(d.length>=3 ? d : q) ? "" : "none"; }); if (q) m.querySelector("details").open = true; };
+    m.querySelector("#revX").onclick = closeModal;
+    ok.onclick = async () => {
+      const sel = L.filter(c => marc.has(c.i)); ok.disabled = true; ok.textContent = "Salvando…";
+      const gravou = await run(async () => {
+        for (let i = 0; i < sel.length; i += 400){ const b = S.db.batch();
+          sel.slice(i, i+400).forEach(c => { if (!clientePorTel(c.telefone)) b.set(col("clientes").doc(), {nome: c.nome, telefone: c.telefone, nascimento: "", obs: "Importada dos contatos do iPhone.", criadoEm: today(), origem: "contatos-iphone"}); });
+          await b.commit(); }
+        const resto = L.filter(c => !marc.has(c.i));
+        if (resto.length) await col("revisao").doc("contatos").update({lista: resto}); else await col("revisao").doc("contatos").delete();
+      }, sel.length+" clientes colocadas na agenda");
+      if (gravou) closeModal(); else up();
+    };
+    m.querySelector("#revFim").onclick = () => confirmar((marc.size ? "As "+marc.size+" marcadas ainda não foram salvas. " : "")+"Tirar os "+L.length+" contatos desta lista? Eles não entram na agenda.", "Tirar da lista", () => run(() => col("revisao").doc("contatos").delete(), "Lista de contatos encerrada"));
+  });
 }
 function formCliente(c){
   const ed = !!c; c = c || {nome:"", telefone:"", nascimento:"", obs:""};
@@ -1106,7 +1136,7 @@ const SEC_PADRAO = {
   retorno:'Oii {nome}, seu último {servico} foi dia {data_atendimento} e, {manter}, o ideal é que você retorne {janela}. Vou te enviar o link pra você ver quais horários tenho disponíveis pra te atender: {link} 💗',
   cuidados:'Oi, {nome}! Foi um prazer te atender. 💗 Seguem os cuidados com seu {servico}: {cuidados}. Qualquer dúvida, é só me chamar.',
   conflito:'Oii {nome}, que pena! O horário de {hora} do {quando} acabou de ser reservado por outra cliente. 😕 Escolhe outro horário aqui, por favor: {link} 💗'};
-const VERSAO_APP = "25/11 · 21h"; /* aparece em Ajustes pra saber se o celular já pegou a versão nova */
+const VERSAO_APP = "26/11 · 19h"; /* aparece em Ajustes pra saber se o celular já pegou a versão nova */
 function secStatus(){ const u = S.sec?.ultimaRodada; if (!u) return '<span class="secst"><i style="background:var(--muted)"></i>Ainda sem notícia da secretária</span>';
   const min = Math.round((Date.now() - new Date(u).getTime())/60000); const hh = new Date(u).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
   return min <= 12 ? '<span class="secst" style="color:var(--ok)"><i style="background:var(--ok)"></i>Funcionando · conferiu a agenda às '+hh+'</span>' : '<span class="secst" style="color:var(--bad)"><i style="background:var(--bad)"></i>Parada desde '+esc(fmtCurto(new Date(u).toISOString().slice(0,10)))+' às '+hh+' · avise o Claude</span>'; }
@@ -1310,6 +1340,7 @@ render();
     S.user = user; S.db = db; S.dbChecked = true; telaLogin(false, ""); renderBanner();
     const fail = e => { console.error(e); if (e && e.code === "permission-denied"){ toast("Este e-mail não tem acesso à agenda do estúdio."); auth.signOut(); } else toast("A conexão com o banco caiu. Recarregue a página."); };
     unsub.push(db.doc("config/geral").onSnapshot(s => { S.cfg = s.exists ? {...DEFAULT_CFG, ...s.data(), msgs:{...DEFAULT_CFG.msgs, ...(s.data().msgs||{})}} : null; render(); }, fail));
+    unsub.push(db.collection("revisao").doc("contatos").onSnapshot(d => { S.revisao = d.exists ? (d.data().lista || []) : []; render(); }, () => {}));
     unsub.push(db.collection("clientes").onSnapshot(q => { S.clientes = q.docs.map(d => ({id:d.id, ...d.data()})); render(); }, fail));
     unsub.push(db.collection("agendamentos").orderBy("data","desc").limit(1000).onSnapshot(q => { S.ags = q.docs.map(d => ({id:d.id, ...d.data()})); render(); }, fail));
     unsub.push(db.collection("caixa").orderBy("data","desc").limit(1000).onSnapshot(q => { S.caixa = q.docs.map(d => ({id:d.id, ...d.data(), valor: Number(d.data().valor)||0})); S.pronto.caixa = true; render(); }, fail));
